@@ -27,7 +27,7 @@ end
 # Jira queries
 
 def load_tasks
-  query = "sprint = 'Sprint 44'"
+  query = "sprint = '#{@sprint}'"
   response = `curl -u #{@user}:#{@password}  "https://#{@subdomain}.atlassian.net/rest/api/2/search?jql=#{CGI.escape(query)}&expand=changelog,subtasks&maxResults=3000"`
   full_issues = JSON.parse(response)
   if full_issues["total"] > full_issues["maxResults"]
@@ -80,16 +80,18 @@ end
 
 # Parameters - FIXME: clean this up
 @subdomain = get_input("Jira subdomain: ")
+@sprint = get_input("Jira sprint name: ")
 @user = get_input("Jira username: ")
 @password = get_password("Jira password: ")
 @user = 'd@n-so.com'
 
-@params = ARGV.collect {|t| t.downcase }
-@sprint = @params.detect {|param| param.downcase =~ /^sprint/}
-if @sprint
-  @params -= [@sprint]
-  @sprint = @sprint.gsub(/[^\d]/, '')
-end
+# FIXME: use OptionParser
+# @params = ARGV.collect {|t| t.downcase }
+# @sprint = @params.detect {|param| param.downcase =~ /^sprint/}
+# if @sprint
+#   @params -= [@sprint]
+#   @sprint = @sprint.gsub(/[^\d]/, '')
+# end
 
 # get sprint start and end dates - figure out how to get these from Jira
 @start_date = Date.parse("2016-02-08").at_beginning_of_day

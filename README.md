@@ -37,7 +37,15 @@ Showing a Jira burndown chart that takes in account subtasks. If a story has no 
 
 ```ruby burndown.rb```
 
-Note you must provide your Jira username and password
+Note you must provide your Jira subdomain, the sprint name, username and password.
+I.e.
+
+```
+Jira subdomain: blinker
+Jira sprint name: Sprint 44
+Jira username: d@n-so.com
+Jira password: secret
+```
 
 ## To improve
 
