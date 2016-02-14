@@ -4,6 +4,7 @@ require 'json'
 require 'ascii_charts'
 require 'active_support/core_ext/numeric/time'
 require 'terminal-table'
+require 'byebug'
 
 # utility methods
 def sum(array)
@@ -64,7 +65,7 @@ def get_fields(issue)
     team:   issue["fields"]["customfield_10501"] ? issue["fields"]["customfield_10501"].collect{|c| c["value"]} : [],
     component: issue["fields"]["components"] ? issue["fields"]["components"].collect{|c| c["name"]} : [],
     points: issue["fields"]["customfield_10004"],
-    issue_type: issue["fields"]["subtasks"] ? "story" : "subtask",
+    issue_type: issue["fields"]["subtasks"] && issue["fields"]["subtasks"].any? ? "subtask" : "story",
     subtasks: issue["fields"]["subtasks"] ? issue["fields"]["subtasks"].collect do |subtask|
       load_subtask(subtask["key"])
     end : []
@@ -78,27 +79,18 @@ end
 
 # params
 
-# Parameters - FIXME: clean this up
+# Parameters - FIXME: clean this up, i.e use OptionParser
 @subdomain = get_input("Jira subdomain: ")
 @sprint = get_input("Jira sprint name: ")
 @user = get_input("Jira username: ")
 @password = get_password("Jira password: ")
 @user = 'd@n-so.com'
 
-# FIXME: use OptionParser
-# @params = ARGV.collect {|t| t.downcase }
-# @sprint = @params.detect {|param| param.downcase =~ /^sprint/}
-# if @sprint
-#   @params -= [@sprint]
-#   @sprint = @sprint.gsub(/[^\d]/, '')
-# end
-
 # get sprint start and end dates - figure out how to get these from Jira
 @start_date = Date.parse("2016-02-08").at_beginning_of_day
 @end_date   = Date.parse("2016-02-19").at_beginning_of_day
 
-# query
-
+# query all issues
 full_issues = load_tasks
 issues = full_issues["issues"].collect {|issue| get_fields(issue) }.compact
 
@@ -107,7 +99,7 @@ flattened = []
 issues.each do |issue|
   flattened << (issue[:issue_type] == "story" ? issue : issue[:subtasks])
 end
-issues = flattened.flatten
+issues = flattened.flatten.uniq
 puts "Number of stories/subtask #{issues.length}."
 
 # validation - show any relevant story without points
@@ -116,7 +108,7 @@ issues.each do |issue|
   nopoints << "\t#{issue[:key]}: #{issue[:title]}" if issue[:points].nil?
 end
 if nopoints.any?
-  puts "Removing stories/subtasks without points: #{nopoints.length}"
+  puts "ERROR: add points to the following stories/subtasks: #{nopoints.length}"
   puts nopoints.join("\n")
   issues = issues.delete_if {|i| i[:points].nil?}
   puts "Number of stories/subtask #{issues.length}"
@@ -125,12 +117,28 @@ end
 # summary
 teams = issues.collect {|i| i[:team]}.flatten.uniq.sort
 team_points = []
+more_than_one_team = []  # Issues with more than on team must have subtasks and each subtask must be asigned to one team only.
+no_team = []
 teams.each do |team|
-  # Fixme
-  # team_issues = issues.select {|i| i[:team].include?(team)}  # Fixme: how to deal with story that have more than one team? Prorate?
-  team_issues = issues.select {|i| i[:team].first == team} # Picking first team is not fair
+  team_issues = issues.select do |i|
+    more_than_one_team << "\t#{i[:key]}: #{i[:title]}"  if i[:team].length > 1
+    no_team << "\t#{i[:key]}: #{i[:title]}"  if i[:team].length == 0
+    i[:team].first == team
+  end
+  team_issues = team_issues.uniq
   team_points << [team, get_points(team_issues)]
 end
+more_than_one_team = more_than_one_team.uniq.sort
+no_team = no_team.uniq.sort
+if more_than_one_team.any?
+  puts "ERROR: Issues with more than on team must have subtasks and each subtask must be asigned to one team only: #{more_than_one_team.length}"
+  puts more_than_one_team.join("\n")
+end
+if no_team.any?
+  puts "ERROR: add team to the following stories/subtasks: #{no_team.length}"
+  puts no_team.join("\n")
+end
+
 table = Terminal::Table.new headings: ['Team', 'Points'], rows: team_points
 table.add_separator
 table.add_row ['Total', get_points(issues)]
@@ -175,9 +183,7 @@ def draw_chart(title, issues)
     remaining_points = total_points - resolved_point
     remaining_points = 0 if date > Date.today
     points_per_day << [n+1, remaining_points]
-    # puts "\t#{date} => #{remaining_points}"
   end
-  # puts points_per_day.inspect
   puts AsciiCharts::Cartesian.new(points_per_day, :hide_zero => true).draw
 end
 
