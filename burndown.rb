@@ -84,7 +84,6 @@ end
 @sprint = get_input("Jira sprint name: ")
 @user = get_input("Jira username: ")
 @password = get_password("Jira password: ")
-@user = 'd@n-so.com'
 
 # get sprint start and end dates - figure out how to get these from Jira
 @start_date = Date.parse("2016-02-08").at_beginning_of_day
