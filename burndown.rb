@@ -62,6 +62,7 @@ def get_fields(issue)
     title: issue["fields"]["summary"],
     status: issue["fields"]["status"]["name"],
     statuses: status_history(issue),
+    assignee: issue["fields"]["assignee"] ? issue["fields"]["assignee"]["name"] : nil,
     team:   issue["fields"]["customfield_10501"] ? issue["fields"]["customfield_10501"].collect{|c| c["value"]} : [],
     component: issue["fields"]["components"] ? issue["fields"]["components"].collect{|c| c["name"]} : [],
     points: issue["fields"]["customfield_10004"],
@@ -86,11 +87,15 @@ end
 @password = get_password("Jira password: ")
 
 # get sprint start and end dates - figure out how to get these from Jira
-@start_date = Date.parse("2016-02-08").at_beginning_of_day
-@end_date   = Date.parse("2016-02-19").at_beginning_of_day
+@start_date = Date.parse("2016-02-22").at_beginning_of_day
+@end_date   = Date.parse("2016-03-04").at_beginning_of_day
 
 # query all issues
 full_issues = load_tasks
+
+# # File.open('issues.json', 'w') {|f| f.write(full_issues.issues.to_json) }
+# full_issues = JSON.parse(IO.read("issues.json"))
+
 issues = full_issues["issues"].collect {|issue| get_fields(issue) }.compact
 
 # flatten - From a point perspective we select only stories with no subtask or all subtasks
@@ -102,6 +107,7 @@ issues = flattened.flatten.uniq
 puts "Number of stories/subtask #{issues.length}."
 
 # validation - show any relevant story without points
+
 nopoints = []
 issues.each do |issue|
   nopoints << "\t#{issue[:key]}: #{issue[:title]}" if issue[:points].nil?
@@ -113,10 +119,10 @@ if nopoints.any?
   puts "Number of stories/subtask #{issues.length}"
 end
 
-# summary
+# validation - team assignment
 teams = issues.collect {|i| i[:team]}.flatten.uniq.sort
-team_points = []
-more_than_one_team = []  # Issues with more than on team must have subtasks and each subtask must be asigned to one team only.
+all_teams = []
+more_than_one_team = []  # Issues with more than one team must have subtasks and each subtask must be asigned to one team only.
 no_team = []
 teams.each do |team|
   team_issues = issues.select do |i|
@@ -125,8 +131,10 @@ teams.each do |team|
     i[:team].first == team
   end
   team_issues = team_issues.uniq
-  team_points << [team, get_points(team_issues)]
+  all_teams << [team, team_issues]
+  # team_points << [team, get_points(team_issues)]
 end
+
 more_than_one_team = more_than_one_team.uniq.sort
 no_team = no_team.uniq.sort
 if more_than_one_team.any?
@@ -138,30 +146,59 @@ if no_team.any?
   puts no_team.join("\n")
 end
 
-table = Terminal::Table.new headings: ['Team', 'Points'], rows: team_points
+# table = Terminal::Table.new headings: ['Team', 'Points'], rows: team_points
+# table.add_separator
+# table.add_row ['Total', get_points(issues)]
+# puts table
+# puts
+
+# summary teams and statuses
+# statuses = issues.collect {|i| i[:status]}.compact.uniq
+statuses = ["Open", "In Progress", "Awaiting Merge", "Awaiting Product Acceptance", "Awaiting QA Validation", "Resolved"]
+statuses_label = ["Open", "Started", "Merge", "Product", "QA", "Resolved"]
+team_points = []
+# header
+header_row = ["Team"]
+statuses.each_with_index do |status, index|
+  header_row << statuses_label[index]
+end
+header_row << "Total"
+# teams
+all_teams.each do |team_info|
+  team, team_issues = team_info
+  row = [team]
+  statuses.each_with_index do |status, index|
+    team_issues_with_status = team_issues.select {|i| i[:status]==status}
+    row << get_points(team_issues_with_status)
+  end
+  row << get_points(team_issues)
+  team_points << row
+end
+# total by status
+footer_row = ["Total"]
+statuses.each_with_index do |status, index|
+  issues_with_status = issues.select {|i| i[:status]==status}
+  footer_row << get_points(issues_with_status)
+end
+footer_row << get_points(issues)
+
+table = Terminal::Table.new headings: header_row, rows: team_points
 table.add_separator
-table.add_row ['Total', get_points(issues)]
+table.add_row footer_row
 puts table
 puts
 
-# Debug
-def debug(issues)
-  puts "Debugging"
-  total_resolved_points = 0
-  issues.each do |issue|
-    message = ["#{issue[:key]} #{issue[:title]} [#{issue[:points]}]"]
-    resolved = false
-    issue[:statuses].each do |status|
-      if (status[:status] == "Resolved" || status[:status] == "Closed")
-        resolved = true
-        message << "\t #{status[:status]} date: #{status[:date]}"
-        total_resolved_points += issue[:points]
-      end
-    end
-    puts message.join("\n") if resolved
-  end
-  puts "Total resolved points: #{total_resolved_points}"
+# summary by assignee
+assignees = issues.collect {|i| i[:assignee]}.compact.uniq.sort
+assignees_data = []
+assignees.each_with_index do |assignee, index|
+  assignee_issues = issues.select {|i| i[:assignee]==assignee}
+  assignees_data << [assignee, get_points(assignee_issues)]
 end
+
+table = Terminal::Table.new headings: ['Assignee', 'Points'], rows: assignees_data
+puts table
+puts
 
 
 def resolved?(issue, date)
