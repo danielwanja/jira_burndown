@@ -87,8 +87,8 @@ end
 @password = get_password("Jira password: ")
 
 # get sprint start and end dates - figure out how to get these from Jira
-@start_date = Date.parse("2016-02-22").at_beginning_of_day
-@end_date   = Date.parse("2016-03-04").at_beginning_of_day
+@start_date = Date.parse("2016-03-07").at_beginning_of_day
+@end_date   = Date.parse("2016-03-17").at_beginning_of_day
 
 # query all issues
 full_issues = load_tasks
@@ -122,7 +122,7 @@ end
 # validation - team assignment
 teams = issues.collect {|i| i[:team]}.flatten.uniq.sort
 all_teams = []
-more_than_one_team = []  # Issues with more than one team must have subtasks and each subtask must be asigned to one team only.
+more_than_one_team = []  # Issues with more than one team must have subtasks and each subtask must be assigned to one team only.
 no_team = []
 teams.each do |team|
   team_issues = issues.select do |i|
@@ -138,7 +138,7 @@ end
 more_than_one_team = more_than_one_team.uniq.sort
 no_team = no_team.uniq.sort
 if more_than_one_team.any?
-  puts "ERROR: Issues with more than on team must have subtasks and each subtask must be asigned to one team only: #{more_than_one_team.length}"
+  puts "ERROR: Issues with more than one team must have subtasks and each subtask must be assigned to one team only: #{more_than_one_team.length}"
   puts more_than_one_team.join("\n")
 end
 if no_team.any?
@@ -211,16 +211,15 @@ end
 # 12 days - For each day figure how many points
 def draw_chart(title, issues)
   total_points = get_points(issues)
-  puts "#{title}  points:#{total_points}"
   points_per_day = []
-  12.times do |n|
+  11.times do |n|
     date = @start_date + n.day
     resolved_point = sum(issues.collect {|issue| resolved?(issue, date) ? issue[:points] : 0 }).to_i
     remaining_points = total_points - resolved_point
     remaining_points = 0 if date > Date.today
     points_per_day << [n+1, remaining_points]
   end
-  puts AsciiCharts::Cartesian.new(points_per_day, :hide_zero => true).draw
+  puts AsciiCharts::Cartesian.new(points_per_day, :hide_zero => true, title: "#{title}  points:#{total_points}").draw
 end
 
 
@@ -228,6 +227,23 @@ draw_chart "Sprint Burndown", issues
 teams.each do |team|
   team_issues = issues.select {|i| i[:team].first == team} # Picking first team is not fair
   draw_chart "#{team} Burndown", team_issues
+end
+
+puts "Non resolved issues by team"
+
+all_teams.each do |team_info|
+  team, team_issues = team_info
+  team_issues = team_issues.select {|i| i[:status]!="Resolved"}
+  puts "Team: #{team} - number of issues:#{team_issues.length}  (#{get_points(team_issues)} points)"
+  next if team_issues.length == 0
+  (statuses - ["Resolved"]).each_with_index do |status, index|
+    team_issues_with_status = team_issues.select {|i| i[:status]==status}
+    next if team_issues_with_status.length == 0
+    puts "\t#{status} (#{get_points(team_issues_with_status)} points)"
+    team_issues_with_status.each do |team_issue|
+      puts "\t\t#{team_issue[:key]}: #{team_issue[:title]}  (#{team_issue[:points]} points)"
+    end
+  end
 end
 
 puts "Done"
